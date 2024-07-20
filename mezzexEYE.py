@@ -86,7 +86,6 @@ def login(email, password):
         return None, None
     except requests.exceptions.RequestException:
         return None, None
-
 def get_staff_in_time(user_id):
     url = f"https://smapi.mezzex.com/api/Data/getStaffInTime?userId={user_id}"
     try:
@@ -99,7 +98,7 @@ def get_staff_in_time(user_id):
         return None, None
     except requests.exceptions.RequestException:
         return None, None
-    
+
 def fetch_tasks():
     url = "https://smapi.mezzex.com/api/Data/getTasks"
     try:
@@ -629,7 +628,7 @@ def staff_out():
     update_staff_out_time()
     end_all_running_tasks()
     staff_in_button_reference.configure(state=tk.NORMAL)
-    show_login_screen()  # Navigate back to login scree
+    show_login_screen()  # Navigate back to login screen
 
 def show_login_screen():
     global UPDATE_TASK_LIST_FLAG, username_entry, password_entry, show_password_var
@@ -739,6 +738,7 @@ root = ctk.CTk()
 root.title("Mezzex Eye Management System")
 root.geometry("1280x850")
 root.configure(fg_color="#2c3e50")
+
 def on_resize(event):
     global running_task_treeview_reference
     if 'running_task_treeview_reference' in globals():
@@ -747,14 +747,21 @@ def on_resize(event):
         except tk.TclError:
             pass
 root.bind("<Configure>", on_resize)
+
 def update_current_time():
     current_time = datetime.now().strftime("%H:%M:%S")
     if current_time_label_reference:
         current_time_label_reference.configure(text=f"Current Time: {current_time}")
     root.after(1000, update_current_time)
+
 def on_close():
-    staff_out()
-    root.destroy()
+    try:
+        staff_out()
+    except Exception as e:
+        print(f"Error during staff out: {e}")
+    finally:
+        root.destroy()
+
 root.protocol("WM_DELETE_WINDOW", on_close)
 show_login_screen()
 root.mainloop()
