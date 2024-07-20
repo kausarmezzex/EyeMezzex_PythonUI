@@ -6,11 +6,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['tkinter', 'PIL', 'customtkinter'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'PIL', 'customtkinter'],
+    excludes=[],
     noarchive=False,
     optimize=0,
 )

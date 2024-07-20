@@ -3,14 +3,13 @@ from tkinter import ttk, messagebox
 import customtkinter as ctk
 import requests
 import pyautogui
-from PIL import Image, ImageOps
+from PIL import ImageOps
 import psutil
 import schedule
 import time
 import threading
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
 import pytz
 from datetime import datetime
 import socket
@@ -36,7 +35,10 @@ SCREENSHOT_ENABLED = False  # Flag to control screenshot functionality
 UPDATE_TASK_LIST_FLAG = False  # Flag to control task list updating
 
 # URL for external time API
-TIME_API_URL = "https://localhost:7045/api/ServerTime"
+TIME_API_URL = "https://localhost:7045//api/ServerTime"
+
+# Counter for unique task IDs
+task_counter = 0
 
 def get_external_time():
     try:
@@ -63,26 +65,44 @@ def is_system_time_valid():
     return True
 
 def login(email, password):
-    url = "https://localhost:7045/api/AccountApi/login"
+    url = "https://localhost:7045//api/AccountApi/login"
     data = {"Email": email, "Password": password}
     try:
         response = requests.post(url, json=data, verify=False)
         if response.status_code == 200:
             response_json = response.json()
             if response_json.get("message") == "Login successful":
-                global TOKEN, USERNAME, USER_ID, SCREENSHOT_ENABLED
+                global TOKEN, USERNAME, USER_ID, SCREENSHOT_ENABLED, STAFF_IN_TIME, STAFF_ID
                 TOKEN = response_json.get("token")
                 USERNAME = response_json.get("username")
                 USER_ID = response_json.get("userId")
                 SCREENSHOT_ENABLED = True
+
+                # Fetch staff in time
+                STAFF_IN_TIME, STAFF_ID = get_staff_in_time(USER_ID)
+                
                 return USERNAME, USER_ID
             return None, None
         return None, None
     except requests.exceptions.RequestException:
         return None, None
+    
+def get_staff_in_time(user_id):
+    url = f"https://localhost:7045//api/Data/getStaffInTime?userId={user_id}"
+    try:
+        response = requests.get(url, verify=False)
+        if response.status_code == 200:
+            data = response.json()
+            staff_in_time = datetime.fromisoformat(data['staffInTime'])
+            staff_id = data['staffId']
+            return staff_in_time, staff_id
+        return None, None
+    except requests.exceptions.RequestException:
+        return None, None
+
 
 def fetch_tasks():
-    url = "https://localhost:7045/api/Data/getTasks"
+    url = "https://localhost:7045//api/Data/getTasks"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -95,7 +115,7 @@ def fetch_tasks():
         return []
 
 def fetch_completed_tasks(user_id):
-    url = f"https://localhost:7045/api/Data/getUserCompletedTasks?userId={user_id}"
+    url = f"https://localhost:7045//api/Data/getUserCompletedTasks?userId={user_id}"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -112,16 +132,16 @@ def take_screenshot():
     screenshot = pyautogui.screenshot()
     # Use ImageOps to compress the image
     screenshot = ImageOps.exif_transpose(screenshot)
-    screenshot.save("screenshot.jpg", "JPEG", quality=20, optimize=True)
-    image_url = upload_to_cloudinary("screenshot.jpg")
+    image_url = upload_to_cloudinary(screenshot)
     if image_url:
         system_info = get_system_info()
         activity_log = get_activity_log()
         upload_data(image_url, system_info, activity_log)
 
-def upload_to_cloudinary(image_path):
+def upload_to_cloudinary(screenshot):
     try:
-        response = cloudinary.uploader.upload(image_path, upload_preset="ml_default")
+        screenshot.save("screenshot_temp.jpg", "JPEG", quality=20, optimize=True)
+        response = cloudinary.uploader.upload("screenshot_temp.jpg", upload_preset="ml_default")
         if 'url' in response:
             return response['url']
         return None
@@ -142,7 +162,7 @@ def upload_data(image_url, system_info, activity_log):
     current_time = datetime.now(kolkata_tz).isoformat()  # Ensure ISO 8601 format
     system_name = socket.gethostname()  # Get the system name using socket.gethostname()
 
-    url = "https://localhost:7045/api/Data/saveScreenCaptureData"
+    url = "https://localhost:7045//api/Data/saveScreenCaptureData"
     data = {
         "ImageUrl": image_url,
         "CreatedOn": current_time,  # Include the timestamp from the Python code in ISO 8601 format
@@ -163,7 +183,7 @@ def start_scheduled_tasks():
         schedule.run_pending()
         time.sleep(1)
 
-def on_login_click():
+def on_login_click(event=None):
     global TOKEN, USERNAME, USER_ID
     email = username_entry.get()  # Fetch the email from the entry
     password = password_entry.get()
@@ -215,7 +235,8 @@ def show_task_management_screen(username, user_id):
     staff_out_button = ctk.CTkButton(staff_buttons_frame, text="Staff Out", fg_color="#e74c3c", text_color="#ecf0f1", font=("Helvetica", 12), command=staff_out, height=30, width=100)
     staff_out_button.pack(side="left", padx=12)
 
-    staff_in_time_label = ctk.CTkLabel(staff_buttons_frame, text="Staff In Time: Not Logged In", fg_color="#2c3e50", text_color="#ecf0f1", font=("Helvetica", 12, "bold"))
+    staff_in_time_label_text = f"Staff In Time: {STAFF_IN_TIME.strftime('%H:%M:%S')}" if STAFF_IN_TIME else "Staff In Time: Not Logged In"
+    staff_in_time_label = ctk.CTkLabel(staff_buttons_frame, text=staff_in_time_label_text, fg_color="#2c3e50", text_color="#ecf0f1", font=("Helvetica", 12, "bold"))
     staff_in_time_label.pack(side="left", padx=12)
 
     global staff_in_button_reference, staff_in_time_label_reference
@@ -241,7 +262,11 @@ def show_task_management_screen(username, user_id):
     comment_entry = ctk.CTkEntry(root, font=("Helvetica", 12), width=200, height=30)  # Set initial width and height
     comment_entry.grid(row=2, column=4, padx=2, pady=10, sticky="ew")  # Reduced padding
 
-    ctk.CTkButton(root, text="Start Task", fg_color="#27ae60", text_color="#ecf0f1", font=("Helvetica", 12), command=lambda: start_task(task_type_combobox, task_type_entry, comment_entry), height=30, width=100).grid(row=2, column=5, padx=10, pady=10, sticky="ew")
+    start_task_button = ctk.CTkButton(root, text="Start Task", fg_color="#27ae60", text_color="#ecf0f1", font=("Helvetica", 12), command=lambda: start_task(task_type_combobox, task_type_entry, comment_entry), height=30, width=100)
+    start_task_button.grid(row=2, column=5, padx=10, pady=10, sticky="ew")
+
+    # Bind Enter key to Start Task button
+    root.bind("<Return>", lambda event: start_task(task_type_combobox, task_type_entry, comment_entry))
 
     # Running task list section
     ctk.CTkLabel(root, text="Running Tasks", fg_color="#2c3e50", text_color="#ecf0f1", font=("Helvetica", 12, "bold")).grid(row=3, column=0, columnspan=6, pady=5, padx=10, sticky="w")
@@ -311,6 +336,7 @@ def show_task_management_screen(username, user_id):
     for i in range(6):
         root.grid_columnconfigure(i, weight=1)
 
+
 def on_task_selected(task_type_combobox, task_type_entry):
     selected_task = task_type_combobox.get()
     if (selected_task == "Other") and (task_type_entry):
@@ -319,15 +345,10 @@ def on_task_selected(task_type_combobox, task_type_entry):
         task_type_entry.grid_remove()
 
 def start_task(task_type_combobox, task_type_entry, comment_entry):
-    global TASKS
+    global TASKS, task_counter
     if STAFF_IN_TIME is None:
         staff_in()
-
-    # Validate system time before starting a task
-    # if not is_system_time_valid():
-    #     messagebox.showerror("Time Error", "System time has been altered. Please correct the time and try again.")
-    #     return
-
+        
     # Check if task type is selected
     task_type = task_type_combobox.get()
     if task_type == "Select Task Type":
@@ -353,15 +374,15 @@ def start_task(task_type_combobox, task_type_entry, comment_entry):
     TASKS.append(task)
     save_task(task)
 
-    task_id = len(TASKS) - 1
-    start_task_record(task_id)
+    task_counter += 1  # Ensure unique task ID
+    start_task_record(task_counter, task)
     task_type_combobox.set("Select Task Type")  # Reset combobox text
     task_type_entry.delete(0, tk.END)
     comment_entry.delete(0, tk.END)
     update_task_list()
 
 def save_task(task):
-    url = "https://localhost:7045/api/Data/saveTaskTimer"
+    url = "https://localhost:7045//api/Data/saveTaskTimer"
     data = {
         "UserId": USER_ID,  # Use the fetched UserId
         "TaskId": task["task_id"],  # Use the selected TaskId from TASK_ID_MAP
@@ -391,7 +412,7 @@ def save_staff_in_time():
         "staffOutTime": None,
         "UserId": USER_ID  # Include the UserId in the staff data
     }
-    url = "https://localhost:7045/api/Data/saveStaff"
+    url = "https://localhost:7045//api/Data/saveStaff"
     try:
         response = requests.post(url, json=data, verify=False)
         if response.status_code == 200:
@@ -424,7 +445,7 @@ def update_staff_out_time():
         "UserId": USER_ID,  # Include the UserId in the staff data
         "Id": STAFF_ID  # Include the StaffId to update the correct record
     }
-    url = "https://localhost:7045/api/Data/updateStaff"
+    url = "https://localhost:7045//api/Data/updateStaff"
     
     try:
         response = requests.post(url, json=data, verify=False)
@@ -435,8 +456,8 @@ def update_staff_out_time():
     except requests.exceptions.RequestException:
         pass
 
-def start_task_record(task_id):
-    task = TASKS[task_id]
+def start_task_record(task_counter, task):
+    task_id = task_counter  # Ensure unique task ID
     start_time = task["start_time"]
     start_time_str = start_time.strftime("%Y-%m-%dT%H:%M:%S")  # Keep full ISO format for internal use
 
@@ -473,7 +494,7 @@ def update_task_timer(task):
         print("Error: Invalid TASKTIMEID. TASKTIMEID should be a non-null integer.")
         return
 
-    url = "https://localhost:7045/api/Data/updateTaskTimer"
+    url = "https://localhost:7045//api/Data/updateTaskTimer"
     data = {
         "id": TASKTIMEID,  # Ensure TaskTimeId is correctly set
         "taskEndTime": task["end_time"]  # Updated end time
@@ -494,10 +515,12 @@ def update_task_timer(task):
 
 def end_all_running_tasks():
     for task_id in list(RUNNING_TASKS.keys()):
-        end_task(task_id)
+        task = RUNNING_TASKS[task_id]
+        if task["staff_name"] == USERNAME:
+            end_task(task_id)
 
 def fetch_task_timers():
-    url = "https://localhost:7045/api/Data/getTaskTimers"
+    url = "https://localhost:7045//api/Data/getTaskTimers"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -519,39 +542,52 @@ def update_task_list():
             working_time = current_time - start_time
             task["working_time"] = str(working_time).split(".")[0]  # Exclude microseconds
 
-    # Clear existing running task entries
-    for row in running_task_treeview_reference.get_children():
-        running_task_treeview_reference.delete(row)
+    existing_items = set(running_task_treeview_reference.get_children())
+    current_items = set(str(task_id) for task_id in RUNNING_TASKS.keys())
 
-    # Add updated running task entries
+    # Update existing items and add new ones
     for task_id, task in RUNNING_TASKS.items():
         start_time = datetime.fromisoformat(task["start_time"])
-        if task["staff_name"] == USERNAME:
-            running_task_treeview_reference.insert("", "end", iid=task_id, values=(
-                task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),  # Display only the time part
-                task["working_time"], ""), tags=("end_task", "current_user"))
+        if str(task_id) in existing_items:
+            # Update existing item if values have changed
+            current_values = running_task_treeview_reference.item(str(task_id), "values")
+            new_values = (
+                task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
+                task["working_time"], ""
+            )
+            if current_values != new_values:
+                running_task_treeview_reference.item(str(task_id), values=new_values)
         else:
-            running_task_treeview_reference.insert("", "end", iid=task_id, values=(
-                task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),  # Display only the time part
-                task["working_time"], ""), tags=("end_task",))
+            # Add new item
+            if task["staff_name"] == USERNAME:
+                running_task_treeview_reference.insert("", "end", iid=str(task_id), values=(
+                    task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
+                    task["working_time"], ""), tags=("end_task", "current_user"))
+            else:
+                running_task_treeview_reference.insert("", "end", iid=str(task_id), values=(
+                    task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
+                    task["working_time"], ""), tags=("end_task",))
+
+    # Remove items that are no longer needed
+    for item in existing_items - current_items:
+        running_task_treeview_reference.delete(item)
 
     # Bind the End Task button
     running_task_treeview_reference.bind("<Button-1>", on_treeview_click)
 
-    # Clear existing ended task entries
-    for row in ended_task_treeview_reference.get_children():
-        ended_task_treeview_reference.delete(row)
+    # Update ended tasks
+    existing_ended_items = set(ended_task_treeview_reference.get_children())
+    ended_task_treeview_reference.delete(*existing_ended_items)  # Clear existing ended task entries
 
-    # Add updated ended task entries
     for task in ENDED_TASKS:
         start_time = datetime.fromisoformat(task["start_time"])
         end_time = datetime.fromisoformat(task["end_time"])
         ended_task_treeview_reference.insert("", "end", values=(
-            task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),  # Display only the time part
-            end_time.strftime("%H:%M:%S"),  # Display only the time part
-            task["working_time"]))
+            task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
+            end_time.strftime("%H:%M:%S"), task["working_time"]))
 
     root.after(1000, update_task_list)
+
 
 def on_treeview_click(event):
     item = running_task_treeview_reference.identify('item', event.x, event.y)
@@ -608,6 +644,9 @@ def show_login_screen():
 
     login_button = ctk.CTkButton(login_frame, text="Login", font=("Helvetica", 14), fg_color="#3498db", text_color="#ecf0f1", hover_color="#2980b9", command=on_login_click, width=100, height=30)
     login_button.grid(row=3, column=0, columnspan=2, pady=20)
+
+    # Bind Enter key to Login button
+    root.bind("<Return>", on_login_click)
 
     # Make rows and columns expandable
     login_frame.grid_rowconfigure(0, weight=1)
