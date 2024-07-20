@@ -100,7 +100,6 @@ def get_staff_in_time(user_id):
     except requests.exceptions.RequestException:
         return None, None
 
-
 def fetch_tasks():
     url = "https://localhost:7045//api/Data/getTasks"
     try:
@@ -235,8 +234,7 @@ def show_task_management_screen(username, user_id):
     staff_out_button = ctk.CTkButton(staff_buttons_frame, text="Staff Out", fg_color="#e74c3c", text_color="#ecf0f1", font=("Helvetica", 12), command=staff_out, height=30, width=100)
     staff_out_button.pack(side="left", padx=12)
 
-    staff_in_time_label_text = f"Staff In Time: {STAFF_IN_TIME.strftime('%H:%M:%S')}" if STAFF_IN_TIME else "Staff In Time: Not Logged In"
-    staff_in_time_label = ctk.CTkLabel(staff_buttons_frame, text=staff_in_time_label_text, fg_color="#2c3e50", text_color="#ecf0f1", font=("Helvetica", 12, "bold"))
+    staff_in_time_label = ctk.CTkLabel(staff_buttons_frame, text="Staff In Time: Not Logged In", fg_color="#2c3e50", text_color="#ecf0f1", font=("Helvetica", 12, "bold"))
     staff_in_time_label.pack(side="left", padx=12)
 
     global staff_in_button_reference, staff_in_time_label_reference
@@ -336,7 +334,6 @@ def show_task_management_screen(username, user_id):
     for i in range(6):
         root.grid_columnconfigure(i, weight=1)
 
-
 def on_task_selected(task_type_combobox, task_type_entry):
     selected_task = task_type_combobox.get()
     if (selected_task == "Other") and (task_type_entry):
@@ -348,7 +345,12 @@ def start_task(task_type_combobox, task_type_entry, comment_entry):
     global TASKS, task_counter
     if STAFF_IN_TIME is None:
         staff_in()
-        
+
+    # Validate system time before starting a task
+    # if not is_system_time_valid():
+    #     messagebox.showerror("Time Error", "System time has been altered. Please correct the time and try again.")
+    #     return
+
     # Check if task type is selected
     task_type = task_type_combobox.get()
     if task_type == "Select Task Type":
@@ -530,6 +532,25 @@ def fetch_task_timers():
     except requests.exceptions.RequestException:
         return []
 
+def format_working_time(working_time_str):
+    time_parts = working_time_str.split(':')
+    
+    if len(time_parts) == 3:
+        hours, minutes, seconds = int(time_parts[0]), int(time_parts[1]), int(float(time_parts[2]))
+    elif len(time_parts) == 2:
+        hours, minutes, seconds = 0, int(time_parts[0]), int(float(time_parts[1]))
+    else:
+        hours, minutes, seconds = 0, 0, int(float(time_parts[0]))
+
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours > 1 else ''}")
+    if minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
+    if seconds > 0:
+        parts.append(f"{seconds} second{'s' if seconds > 1 else ''}")
+    return ' '.join(parts)
+
 def update_task_list():
     if not UPDATE_TASK_LIST_FLAG:
         return
@@ -582,9 +603,10 @@ def update_task_list():
     for task in ENDED_TASKS:
         start_time = datetime.fromisoformat(task["start_time"])
         end_time = datetime.fromisoformat(task["end_time"])
+        working_time_str = format_working_time(task["working_time"])
         ended_task_treeview_reference.insert("", "end", values=(
             task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
-            end_time.strftime("%H:%M:%S"), task["working_time"]))
+            end_time.strftime("%H:%M:%S"), working_time_str))
 
     root.after(1000, update_task_list)
 
@@ -607,7 +629,7 @@ def staff_out():
     update_staff_out_time()
     end_all_running_tasks()
     staff_in_button_reference.configure(state=tk.NORMAL)
-    show_login_screen()  # Navigate back to login screen
+    show_login_screen()  # Navigate back to login scree
 
 def show_login_screen():
     global UPDATE_TASK_LIST_FLAG, username_entry, password_entry, show_password_var
@@ -753,6 +775,11 @@ def update_current_time():
         current_time_label_reference.configure(text=f"Current Time: {current_time}")
     root.after(1000, update_current_time)
 
-show_login_screen()
+def on_close():
+    staff_out()
+    root.destroy()
 
+root.protocol("WM_DELETE_WINDOW", on_close)
+
+show_login_screen()
 root.mainloop()
