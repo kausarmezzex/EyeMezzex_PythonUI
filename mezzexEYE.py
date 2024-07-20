@@ -13,6 +13,10 @@ import cloudinary.uploader
 import pytz
 from datetime import datetime
 import socket
+import urllib3
+
+# Suppress InsecureRequestWarning
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Cloudinary configuration
 cloudinary.config(
@@ -24,20 +28,19 @@ cloudinary.config(
 TOKEN = None
 USERNAME = None
 USER_ID = None
-STAFF_ID = None  # To save the staff ID after staff in
+STAFF_ID = None 
 TASKS = []
 TASKTIMEID = None
 STAFF_IN_TIME = None
 RUNNING_TASKS = {}
 ENDED_TASKS = []
-TASK_ID_MAP = {}  # To map task names to their IDs
-SCREENSHOT_ENABLED = False  # Flag to control screenshot functionality
-UPDATE_TASK_LIST_FLAG = False  # Flag to control task list updating
+TASK_ID_MAP = {} 
+SCREENSHOT_ENABLED = False 
+UPDATE_TASK_LIST_FLAG = False
 
 # URL for external time API
 TIME_API_URL = "https://smapi.mezzex.com/api/ServerTime"
 
-# Counter for unique task IDs
 task_counter = 0
 
 def get_external_time():
@@ -98,13 +101,13 @@ def get_staff_in_time(user_id):
         return None, None
     except requests.exceptions.RequestException:
         return None, None
-
 def fetch_tasks():
     url = "https://smapi.mezzex.com/api/Data/getTasks"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
             tasks = response.json()
+            TASK_ID_MAP.clear()  
             for task in tasks:
                 TASK_ID_MAP[task['name']] = task['id']
             return tasks
@@ -117,8 +120,7 @@ def fetch_completed_tasks(user_id):
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
-            completed_tasks = response.json()
-            return completed_tasks
+            return response.json()
         return []
     except requests.exceptions.RequestException:
         return []
@@ -148,7 +150,7 @@ def upload_to_cloudinary(screenshot):
 
 def get_system_info():
     system_info = psutil.virtual_memory()
-    system_name = socket.gethostname()  # Get the system name using socket.gethostname()
+    system_name = socket.gethostname() 
     return f"System Info: {system_info}, System Name: {system_name}"
 
 def get_activity_log():
@@ -157,15 +159,15 @@ def get_activity_log():
 
 def upload_data(image_url, system_info, activity_log):
     kolkata_tz = pytz.timezone('Asia/Kolkata')
-    current_time = datetime.now(kolkata_tz).isoformat()  # Ensure ISO 8601 format
-    system_name = socket.gethostname()  # Get the system name using socket.gethostname()
+    current_time = datetime.now(kolkata_tz).isoformat() 
+    system_name = socket.gethostname()
 
     url = "https://smapi.mezzex.com/api/Data/saveScreenCaptureData"
     data = {
         "ImageUrl": image_url,
-        "CreatedOn": current_time,  # Include the timestamp from the Python code in ISO 8601 format
-        "SystemName": system_name,  # Include the system name in the data
-        "Username": USERNAME,  # Include the username in the data
+        "CreatedOn": current_time, 
+        "SystemName": system_name, 
+        "Username": USERNAME, 
         "TaskTimerId": TASKTIMEID
     }
     try:
@@ -196,6 +198,7 @@ def show_task_management_screen(username, user_id):
     global UPDATE_TASK_LIST_FLAG, running_task_treeview_reference, ended_task_treeview_reference, current_time_label_reference
     UPDATE_TASK_LIST_FLAG = True
 
+    # Destroy all existing widgets in the root window
     for widget in root.winfo_children():
         widget.destroy()
 
@@ -300,7 +303,7 @@ def show_task_management_screen(username, user_id):
     # Fetch task timers from the API
     task_timers = fetch_task_timers()
     for task in task_timers:
-        task_id = len(RUNNING_TASKS)
+        task_id = task["id"]
         RUNNING_TASKS[task_id] = {
             "staff_name": task["userName"],
             "task_type": task["taskName"],
@@ -347,11 +350,6 @@ def start_task(task_type_combobox, task_type_entry, comment_entry):
     if STAFF_IN_TIME is None:
         staff_in()
 
-    # Validate system time before starting a task
-    # if not is_system_time_valid():
-    #     messagebox.showerror("Time Error", "System time has been altered. Please correct the time and try again.")
-    #     return
-
     # Check if task type is selected
     task_type = task_type_combobox.get()
     if task_type == "Select Task Type":
@@ -377,9 +375,9 @@ def start_task(task_type_combobox, task_type_entry, comment_entry):
     TASKS.append(task)
     save_task(task)
 
-    task_counter += 1  # Ensure unique task ID
+    task_counter += 1 
     start_task_record(task_counter, task)
-    task_type_combobox.set("Select Task Type")  # Reset combobox text
+    task_type_combobox.set("Select Task Type") 
     task_type_entry.delete(0, tk.END)
     comment_entry.delete(0, tk.END)
     update_task_list()
@@ -387,11 +385,11 @@ def start_task(task_type_combobox, task_type_entry, comment_entry):
 def save_task(task):
     url = "https://smapi.mezzex.com/api/Data/saveTaskTimer"
     data = {
-        "UserId": USER_ID,  # Use the fetched UserId
-        "TaskId": task["task_id"],  # Use the selected TaskId from TASK_ID_MAP
+        "UserId": USER_ID,
+        "TaskId": task["task_id"],  
         "TaskComment": task["comment"],
         "taskStartTime": task["start_time"].isoformat(),
-        "taskEndTime": None  # Task has just started, so taskEndTime is None
+        "taskEndTime": None  
     }
 
     try:
@@ -400,7 +398,7 @@ def save_task(task):
             response_json = response.json()
             if response_json.get("message") == "Task timer data uploaded successfully":
                 global TASKTIMEID
-                TASKTIMEID = response_json.get("taskTimeId")  # Ensure the key matches 'taskTimeId'
+                TASKTIMEID = response_json.get("taskTimeId") 
         else:
             pass
     except requests.exceptions.RequestException:
@@ -413,7 +411,7 @@ def save_staff_in_time():
     data = {
         "staffInTime": STAFF_IN_TIME.isoformat(),
         "staffOutTime": None,
-        "UserId": USER_ID  # Include the UserId in the staff data
+        "UserId": USER_ID 
     }
     url = "https://smapi.mezzex.com/api/Data/saveStaff"
     try:
@@ -421,7 +419,7 @@ def save_staff_in_time():
         if response.status_code == 200:
             response_json = response.json()
             if response_json.get("message") == "Staff data saved successfully":
-                STAFF_ID = response_json.get("staffId")  # Ensure the key matches 'staffId'
+                STAFF_ID = response_json.get("staffId") 
                 
                 # Update UI elements
                 if staff_in_time_label_reference and staff_in_button_reference:
@@ -445,8 +443,8 @@ def update_staff_out_time():
     data = {
         "staffInTime": STAFF_IN_TIME.isoformat(),
         "staffOutTime": staff_out_time.isoformat(),
-        "UserId": USER_ID,  # Include the UserId in the staff data
-        "Id": STAFF_ID  # Include the StaffId to update the correct record
+        "UserId": USER_ID, 
+        "Id": STAFF_ID  
     }
     url = "https://smapi.mezzex.com/api/Data/updateStaff"
     
@@ -460,33 +458,35 @@ def update_staff_out_time():
         pass
 
 def start_task_record(task_counter, task):
-    task_id = task_counter  # Ensure unique task ID
+    task_id = task_counter
     start_time = task["start_time"]
-    start_time_str = start_time.strftime("%Y-%m-%dT%H:%M:%S")  # Keep full ISO format for internal use
+    start_time_str = start_time.strftime("%Y-%m-%dT%H:%M:%S") 
 
     RUNNING_TASKS[task_id] = {
+        "id": task_id,  # Ensure id is included
         "staff_name": USERNAME,
         "task_type": task["task_type"],
         "comment": task["comment"],
-        "start_time": start_time_str,  # Store in full ISO format for accurate time calculations
+        "start_time": start_time_str, 
         "working_time": "00:00:00"
     }
+
 
 def end_task(task_id):
     task = RUNNING_TASKS.get(int(task_id))
     if task is None:
         return
 
-    # Ensure only the task owner can end the task
+   
     if task["staff_name"] != USERNAME:
         messagebox.showerror("Permission Denied", "You cannot end another user's task.")
         return
 
     task = RUNNING_TASKS.pop(int(task_id))
-    task["end_time"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")  # Store in full ISO format
+    task["end_time"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     start_time = datetime.fromisoformat(task["start_time"])
     end_time = datetime.fromisoformat(task["end_time"])
-    task["working_time"] = str(end_time - start_time).split(".")[0]  # Calculate total working time
+    task["working_time"] = str(end_time - start_time).split(".")[0] 
     ENDED_TASKS.append(task)
     update_task_timer(task)
 
@@ -503,18 +503,22 @@ def update_task_timer(task):
         "taskEndTime": task["end_time"]  # Updated end time
     }
 
-    # Debugging print statements
-    print(f"Sending PUT request to {url} with data: {data}")
+    # Debugging output to verify data structure
+    print(f"Updating task timer with data: {data}")
 
     try:
         response = requests.post(url, json=data, verify=False)
-        print(f"Response status code: {response.status_code}")  # Debugging info
+        print(f"Response status code: {response.status_code}")
+        
+        # Check if the response indicates success
         if response.status_code == 200:
             print("Task end time updated successfully")
         else:
+            # Print error message and response content for debugging
             print(f"Failed to update task end time: {response.status_code}, response: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"Request exception: {e}")
+
 
 def end_all_running_tasks():
     for task_id in list(RUNNING_TASKS.keys()):
@@ -528,10 +532,26 @@ def fetch_task_timers():
         response = requests.get(url, verify=False)
         if response.status_code == 200:
             task_timers = response.json()
+            print("Fetched task timers:", task_timers) 
+            for task in task_timers:
+                if 'id' not in task or not isinstance(task['id'], int):
+                    print("Warning: Task ID missing or invalid in task:", task)
+                else:
+                    RUNNING_TASKS[task['id']] = {
+                        "id": task['id'],  # Ensure id is stored
+                        "staff_name": task.get("userName", "Unknown"),
+                        "task_type": task.get("taskName", "Unknown"),
+                        "comment": task.get("taskComment", ""),
+                        "start_time": datetime.fromisoformat(task.get("taskStartTime")).strftime("%Y-%m-%dT%H:%M:%S"),
+                        "working_time": "00:00:00"
+                    }
             return task_timers
         return []
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching task timers: {e}")
         return []
+
+
 def format_working_time(working_time_str):
     time_parts = working_time_str.split(':')
     
@@ -561,7 +581,7 @@ def update_task_list():
             start_time = datetime.fromisoformat(task["start_time"])
             current_time = datetime.now()
             working_time = current_time - start_time
-            task["working_time"] = str(working_time).split(".")[0]  # Exclude microseconds
+            task["working_time"] = str(working_time).split(".")[0]
 
     existing_items = set(running_task_treeview_reference.get_children())
     current_items = set(str(task_id) for task_id in RUNNING_TASKS.keys())
@@ -570,7 +590,7 @@ def update_task_list():
     for task_id, task in RUNNING_TASKS.items():
         start_time = datetime.fromisoformat(task["start_time"])
         if str(task_id) in existing_items:
-            # Update existing item if values have changed
+            
             current_values = running_task_treeview_reference.item(str(task_id), "values")
             new_values = (
                 task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
@@ -579,7 +599,7 @@ def update_task_list():
             if current_values != new_values:
                 running_task_treeview_reference.item(str(task_id), values=new_values)
         else:
-            # Add new item
+            
             if task["staff_name"] == USERNAME:
                 running_task_treeview_reference.insert("", "end", iid=str(task_id), values=(
                     task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
@@ -589,14 +609,11 @@ def update_task_list():
                     task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"),
                     task["working_time"], ""), tags=("end_task",))
 
-    # Remove items that are no longer needed
     for item in existing_items - current_items:
         running_task_treeview_reference.delete(item)
 
-    # Bind the End Task button
     running_task_treeview_reference.bind("<Button-1>", on_treeview_click)
 
-    # Update ended tasks
     existing_ended_items = set(ended_task_treeview_reference.get_children())
     ended_task_treeview_reference.delete(*existing_ended_items)  # Clear existing ended task entries
 
@@ -613,7 +630,7 @@ def update_task_list():
 def on_treeview_click(event):
     item = running_task_treeview_reference.identify('item', event.x, event.y)
     column = running_task_treeview_reference.identify_column(event.x)
-    if column == '#6':  # 'End Task' column (last column)
+    if column == '#6':
         task_id = item
         end_task(task_id)
 
@@ -628,7 +645,7 @@ def staff_out():
     update_staff_out_time()
     end_all_running_tasks()
     staff_in_button_reference.configure(state=tk.NORMAL)
-    show_login_screen()  # Navigate back to login screen
+    show_login_screen()
 
 def show_login_screen():
     global UPDATE_TASK_LIST_FLAG, username_entry, password_entry, show_password_var
@@ -655,9 +672,7 @@ def show_login_screen():
     show_password_checkbutton.grid(row=0, column=1, padx=(10, 0), sticky="w")
     login_button = ctk.CTkButton(login_frame, text="Login", font=("Helvetica", 14), fg_color="#3498db", text_color="#ecf0f1", hover_color="#2980b9", command=on_login_click, width=100, height=30)
     login_button.grid(row=3, column=0, columnspan=2, pady=20)
-    # Bind Enter key to Login button
     root.bind("<Return>", on_login_click)
-    # Make rows and columns expandable
     login_frame.grid_rowconfigure(0, weight=1)
     login_frame.grid_rowconfigure(1, weight=1)
     login_frame.grid_rowconfigure(2, weight=1)
@@ -673,21 +688,48 @@ def toggle_password_visibility():
         password_entry.configure(show="*")
 
 def refresh_ui():
-    global USER_ID, running_task_treeview_reference, ended_task_treeview_reference
-    # Fetch latest tasks, completed tasks, and task timers
-    fetch_tasks()
-    fetch_completed_tasks(USER_ID)
-    fetch_task_timers()
-    update_task_list()  # Add this line to refresh the UI
-    print("Refreshed UI")  # Add this line for debugging
+    global USER_ID, running_task_treeview_reference, ended_task_treeview_reference, RUNNING_TASKS, ENDED_TASKS
+    RUNNING_TASKS.clear()
+    ENDED_TASKS.clear()
+    tasks = fetch_tasks()
+    completed_tasks = fetch_completed_tasks(USER_ID)
+    task_timers = fetch_task_timers()
+
+    for task in task_timers:
+        task_id = task.get("id")  # Use 'id' instead of 'taskTimeId'
+        if task_id:
+            RUNNING_TASKS[task_id] = {
+                "staff_name": task.get("userName", "Unknown"),
+                "task_type": task.get("taskName", "Unknown"),
+                "comment": task.get("taskComment", ""),
+                "start_time": datetime.fromisoformat(task.get("taskStartTime")).strftime("%Y-%m-%dT%H:%M:%S"),
+                "working_time": "00:00:00"
+            }
+        else:
+            print(f"Task ID missing in task: {task}")
+
+    for task in completed_tasks:
+        ended_task = {
+            "staff_name": task.get("userName", "Unknown"),
+            "task_type": task.get("taskName", "Unknown"),
+            "comment": task.get("taskComment", ""),
+            "start_time": datetime.fromisoformat(task.get("taskStartTime")).strftime("%Y-%m-%dT%H:%M:%S"),
+            "end_time": datetime.fromisoformat(task.get("taskEndTime")).strftime("%Y-%m-%dT%H:%M:%S"),
+            "working_time": str(datetime.fromisoformat(task.get("taskEndTime")) - datetime.fromisoformat(task.get("taskStartTime")))
+        }
+        ENDED_TASKS.append(ended_task)
+
+    update_task_list()
+    print("Refreshed UI") 
+
 
 class CustomTreeview(ttk.Treeview):
     def __init__(self, master=None, **kwargs):
         super(CustomTreeview, self).__init__(master, **kwargs)
         self.style = ttk.Style()
         self.style.configure("Treeview", font=("Helvetica", 12), rowheight=30)
-        self.style.configure("Treeview.Heading", font=("Helvetica", 12, "bold"))  # Adjusted boldness
-        self.buttons = {}  # To store buttons for each item
+        self.style.configure("Treeview.Heading", font=("Helvetica", 12, "bold"))
+        self.buttons = {} 
     def insert(self, parent, index, iid=None, **kw):
         item = super(CustomTreeview, self).insert(parent, index, iid=iid, **kw)
         if 'tags' in kw and 'end_task' in kw['tags']:
@@ -702,9 +744,9 @@ class CustomTreeview(ttk.Treeview):
     def place_button(self, item):
         if item in self.buttons:
             btn = self.buttons[item]
-            bbox = self.bbox(item, column="#6")  # Adjusted to column #6
+            bbox = self.bbox(item, column="#6") 
             if bbox:
-                btn.place(x=bbox[0] + 2, y=bbox[1] + 2)  # Adjusted x coordinate to remove space
+                btn.place(x=bbox[0] + 2, y=bbox[1] + 2) 
     def end_task_callback(self, item):
         task_id = item
         task = RUNNING_TASKS.get(int(task_id))
