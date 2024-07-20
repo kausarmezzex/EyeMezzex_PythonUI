@@ -35,7 +35,7 @@ SCREENSHOT_ENABLED = False  # Flag to control screenshot functionality
 UPDATE_TASK_LIST_FLAG = False  # Flag to control task list updating
 
 # URL for external time API
-TIME_API_URL = "https://localhost:7045//api/ServerTime"
+TIME_API_URL = "https://smapi.mezzex.com/api/ServerTime"
 
 # Counter for unique task IDs
 task_counter = 0
@@ -65,7 +65,7 @@ def is_system_time_valid():
     return True
 
 def login(email, password):
-    url = "https://localhost:7045//api/AccountApi/login"
+    url = "https://smapi.mezzex.com/api/AccountApi/login"
     data = {"Email": email, "Password": password}
     try:
         response = requests.post(url, json=data, verify=False)
@@ -86,9 +86,9 @@ def login(email, password):
         return None, None
     except requests.exceptions.RequestException:
         return None, None
-    
+
 def get_staff_in_time(user_id):
-    url = f"https://localhost:7045//api/Data/getStaffInTime?userId={user_id}"
+    url = f"https://smapi.mezzex.com/api/Data/getStaffInTime?userId={user_id}"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -99,9 +99,9 @@ def get_staff_in_time(user_id):
         return None, None
     except requests.exceptions.RequestException:
         return None, None
-
+    
 def fetch_tasks():
-    url = "https://localhost:7045//api/Data/getTasks"
+    url = "https://smapi.mezzex.com/api/Data/getTasks"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -114,7 +114,7 @@ def fetch_tasks():
         return []
 
 def fetch_completed_tasks(user_id):
-    url = f"https://localhost:7045//api/Data/getUserCompletedTasks?userId={user_id}"
+    url = f"https://smapi.mezzex.com/api/Data/getUserCompletedTasks?userId={user_id}"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -161,7 +161,7 @@ def upload_data(image_url, system_info, activity_log):
     current_time = datetime.now(kolkata_tz).isoformat()  # Ensure ISO 8601 format
     system_name = socket.gethostname()  # Get the system name using socket.gethostname()
 
-    url = "https://localhost:7045//api/Data/saveScreenCaptureData"
+    url = "https://smapi.mezzex.com/api/Data/saveScreenCaptureData"
     data = {
         "ImageUrl": image_url,
         "CreatedOn": current_time,  # Include the timestamp from the Python code in ISO 8601 format
@@ -330,7 +330,9 @@ def show_task_management_screen(username, user_id):
 
     # Make rows and columns expandable, setting lower weights for the task areas
     for i in range(7):
-        root.grid_rowconfigure(i, weight=1 if i != 4 and i != 6 else 0)
+        root.grid_rowconfigure(i, weight=0)
+    root.grid_rowconfigure(4, weight=1)
+    root.grid_rowconfigure(6, weight=1)
     for i in range(6):
         root.grid_columnconfigure(i, weight=1)
 
@@ -384,7 +386,7 @@ def start_task(task_type_combobox, task_type_entry, comment_entry):
     update_task_list()
 
 def save_task(task):
-    url = "https://localhost:7045//api/Data/saveTaskTimer"
+    url = "https://smapi.mezzex.com/api/Data/saveTaskTimer"
     data = {
         "UserId": USER_ID,  # Use the fetched UserId
         "TaskId": task["task_id"],  # Use the selected TaskId from TASK_ID_MAP
@@ -414,7 +416,7 @@ def save_staff_in_time():
         "staffOutTime": None,
         "UserId": USER_ID  # Include the UserId in the staff data
     }
-    url = "https://localhost:7045//api/Data/saveStaff"
+    url = "https://smapi.mezzex.com/api/Data/saveStaff"
     try:
         response = requests.post(url, json=data, verify=False)
         if response.status_code == 200:
@@ -447,7 +449,7 @@ def update_staff_out_time():
         "UserId": USER_ID,  # Include the UserId in the staff data
         "Id": STAFF_ID  # Include the StaffId to update the correct record
     }
-    url = "https://localhost:7045//api/Data/updateStaff"
+    url = "https://smapi.mezzex.com/api/Data/updateStaff"
     
     try:
         response = requests.post(url, json=data, verify=False)
@@ -496,7 +498,7 @@ def update_task_timer(task):
         print("Error: Invalid TASKTIMEID. TASKTIMEID should be a non-null integer.")
         return
 
-    url = "https://localhost:7045//api/Data/updateTaskTimer"
+    url = "https://smapi.mezzex.com/api/Data/updateTaskTimer"
     data = {
         "id": TASKTIMEID,  # Ensure TaskTimeId is correctly set
         "taskEndTime": task["end_time"]  # Updated end time
@@ -522,7 +524,7 @@ def end_all_running_tasks():
             end_task(task_id)
 
 def fetch_task_timers():
-    url = "https://localhost:7045//api/Data/getTaskTimers"
+    url = "https://smapi.mezzex.com/api/Data/getTaskTimers"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -531,7 +533,6 @@ def fetch_task_timers():
         return []
     except requests.exceptions.RequestException:
         return []
-
 def format_working_time(working_time_str):
     time_parts = working_time_str.split(':')
     
@@ -610,7 +611,6 @@ def update_task_list():
 
     root.after(1000, update_task_list)
 
-
 def on_treeview_click(event):
     item = running_task_treeview_reference.identify('item', event.x, event.y)
     column = running_task_treeview_reference.identify_column(event.x)
@@ -634,42 +634,30 @@ def staff_out():
 def show_login_screen():
     global UPDATE_TASK_LIST_FLAG, username_entry, password_entry, show_password_var
     UPDATE_TASK_LIST_FLAG = False
-
     for widget in root.winfo_children():
         widget.destroy()
-
     # Redesigned Login screen
     login_frame = ctk.CTkFrame(root, fg_color="#2c3e50", corner_radius=15)
     login_frame.pack(expand=True)
-
     login_title = ctk.CTkLabel(login_frame, text="Mezzex Eye Management System", font=("Helvetica", 24, "bold"), fg_color="#2c3e50", text_color="#ecf0f1", pady=20)
     login_title.grid(row=0, column=0, columnspan=2, pady=(20, 10), padx=10, sticky="n")
-
     username_label = ctk.CTkLabel(login_frame, text="Username:", font=("Helvetica", 14), fg_color="#2c3e50", text_color="#ecf0f1", padx=10, pady=5)
     username_label.grid(row=1, column=0, pady=10, sticky="e")
-    
     username_entry = ctk.CTkEntry(login_frame, font=("Helvetica", 14), width=250)
     username_entry.grid(row=1, column=1, pady=10, padx=(0, 10), sticky="w")
-
     password_label = ctk.CTkLabel(login_frame, text="Password:", font=("Helvetica", 14), fg_color="#2c3e50", text_color="#ecf0f1", padx=10, pady=5)
     password_label.grid(row=2, column=0, pady=10, sticky="e")
-    
     password_frame = tk.Frame(login_frame, bg="#2c3e50")
     password_frame.grid(row=2, column=1, pady=10, padx=(0, 10), sticky="w")
-    
     password_entry = ctk.CTkEntry(password_frame, font=("Helvetica", 14), show="*", width=230)
     password_entry.grid(row=0, column=0, sticky="w")
-
     show_password_var = tk.BooleanVar()
     show_password_checkbutton = ctk.CTkCheckBox(password_frame, text="Show", variable=show_password_var, command=toggle_password_visibility)
     show_password_checkbutton.grid(row=0, column=1, padx=(10, 0), sticky="w")
-
     login_button = ctk.CTkButton(login_frame, text="Login", font=("Helvetica", 14), fg_color="#3498db", text_color="#ecf0f1", hover_color="#2980b9", command=on_login_click, width=100, height=30)
     login_button.grid(row=3, column=0, columnspan=2, pady=20)
-
     # Bind Enter key to Login button
     root.bind("<Return>", on_login_click)
-
     # Make rows and columns expandable
     login_frame.grid_rowconfigure(0, weight=1)
     login_frame.grid_rowconfigure(1, weight=1)
@@ -686,12 +674,12 @@ def toggle_password_visibility():
         password_entry.configure(show="*")
 
 def refresh_ui():
-    global USER_ID
+    global USER_ID, running_task_treeview_reference, ended_task_treeview_reference
     # Fetch latest tasks, completed tasks, and task timers
     fetch_tasks()
     fetch_completed_tasks(USER_ID)
     fetch_task_timers()
-    update_task_list()
+    update_task_list()  # Add this line to refresh the UI
     print("Refreshed UI")  # Add this line for debugging
 
 class CustomTreeview(ttk.Treeview):
@@ -701,27 +689,23 @@ class CustomTreeview(ttk.Treeview):
         self.style.configure("Treeview", font=("Helvetica", 12), rowheight=30)
         self.style.configure("Treeview.Heading", font=("Helvetica", 12, "bold"))  # Adjusted boldness
         self.buttons = {}  # To store buttons for each item
-
     def insert(self, parent, index, iid=None, **kw):
         item = super(CustomTreeview, self).insert(parent, index, iid=iid, **kw)
         if 'tags' in kw and 'end_task' in kw['tags']:
             self.add_button(item)
         return item
-
     def add_button(self, item):
         if item not in self.buttons:
             btn = ttk.Button(self, text="End Task", command=lambda: self.end_task_callback(item), style="Custom.TButton")
             self.buttons[item] = btn
             self.place_button(item)
             self.update_idletasks()
-
     def place_button(self, item):
         if item in self.buttons:
             btn = self.buttons[item]
             bbox = self.bbox(item, column="#6")  # Adjusted to column #6
             if bbox:
                 btn.place(x=bbox[0] + 2, y=bbox[1] + 2)  # Adjusted x coordinate to remove space
-
     def end_task_callback(self, item):
         task_id = item
         task = RUNNING_TASKS.get(int(task_id))
@@ -730,17 +714,14 @@ class CustomTreeview(ttk.Treeview):
             self.delete_button(item)
         else:
             messagebox.showerror("Permission Denied", "You cannot end another user's task.")
-
     def delete_button(self, item):
         if item in self.buttons:
             self.buttons[item].destroy()
             del self.buttons[item]
-
     def delete(self, *items):
         for item in items:
             self.delete_button(item)
         super(CustomTreeview, self).delete(*items)
-
     def resize(self):
         for item in self.get_children():
             if item in self.buttons:
@@ -758,7 +739,6 @@ root = ctk.CTk()
 root.title("Mezzex Eye Management System")
 root.geometry("1280x850")
 root.configure(fg_color="#2c3e50")
-
 def on_resize(event):
     global running_task_treeview_reference
     if 'running_task_treeview_reference' in globals():
@@ -766,20 +746,15 @@ def on_resize(event):
             running_task_treeview_reference.resize()
         except tk.TclError:
             pass
-
 root.bind("<Configure>", on_resize)
-
 def update_current_time():
     current_time = datetime.now().strftime("%H:%M:%S")
     if current_time_label_reference:
         current_time_label_reference.configure(text=f"Current Time: {current_time}")
     root.after(1000, update_current_time)
-
 def on_close():
     staff_out()
     root.destroy()
-
 root.protocol("WM_DELETE_WINDOW", on_close)
-
 show_login_screen()
 root.mainloop()
