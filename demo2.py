@@ -3,7 +3,7 @@ from tkinter import ttk, messagebox
 import customtkinter as ctk
 import requests
 import pyautogui
-from PIL import ImageOps
+from PIL import ImageOps,Image, ImageTk
 import psutil
 import schedule
 import time
@@ -17,8 +17,35 @@ import urllib3
 import ctypes
 import os
 import keyboard
-
+import subprocess
+import sys
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def create_startup_task():
+    """Creates a task in Task Scheduler to run the executable at startup."""
+    task_name = "MezzexEye"
+    
+    # Get the path of the currently running script or executable
+    if getattr(sys, 'frozen', False):
+        exe_path = os.path.abspath(sys.executable)
+    else:
+        exe_path = os.path.abspath(__file__)
+
+    # Define the command to create the task
+    create_command = f"""
+    schtasks /create /f /tn "{task_name}" /tr "{exe_path}" /sc ONLOGON /rl HIGHEST
+    """
+
+    # Run the command
+    subprocess.call(create_command, shell=True)
+
+def main():
+    root = tk.Tk()
+    root.title("Mezzex Eye")
+
+    img = ImageTk.PhotoImage(Image.open("mezzex_logo.png"))
+    panel = tk.Label(root, image=img)
+    panel.pack(side="top", fill="both", expand="yes")
 
 # Cloudinary configuration
 cloudinary.config(
@@ -62,7 +89,7 @@ def unblock_input():
             blocked_keys_set.remove(key)
 
 
-TIME_API_URL = "https://localhost:7045/api/ServerTime"
+TIME_API_URL = "https://smapi.mezzex.com//api/ServerTime"
 task_counter = 0
 
 def hide_taskbar():
@@ -80,7 +107,7 @@ def get_external_time():
     except requests.exceptions.RequestException:
         return None
 def get_staff_in_time(user_id):
-    url = f"https://localhost:7045/api/Data/getStaffInTime?userId={user_id}"
+    url = f"https://smapi.mezzex.com//api/Data/getStaffInTime?userId={user_id}"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -101,7 +128,7 @@ def is_system_time_valid():
     return False
 
 def login(email, password):
-    url = "https://localhost:7045/api/AccountApi/login"
+    url = "https://smapi.mezzex.com//api/AccountApi/login"
     data = {"Email": email, "Password": password}
     try:
         response = requests.post(url, json=data, verify=False)
@@ -122,7 +149,7 @@ def login(email, password):
     return None, None
 
 def fetch_tasks():
-    url = "https://localhost:7045/api/Data/getTasks"
+    url = "https://smapi.mezzex.com//api/Data/getTasks"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -180,7 +207,7 @@ def staff_in():
     save_staff_in_time()
 
 def fetch_completed_tasks(user_id):
-    url = f"https://localhost:7045/api/Data/getUserCompletedTasks?userId={user_id}"
+    url = f"https://smapi.mezzex.com//api/Data/getUserCompletedTasks?userId={user_id}"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -218,7 +245,7 @@ def upload_data(image_url, system_info, activity_log):
     kolkata_tz = pytz.timezone('Asia/Kolkata')
     current_time = datetime.now(kolkata_tz).isoformat()
     system_name = socket.gethostname()
-    url = "https://localhost:7045/api/Data/saveScreenCaptureData"
+    url = "https://smapi.mezzex.com//api/Data/saveScreenCaptureData"
     data = {
         "ImageUrl": image_url,
         "CreatedOn": current_time,
@@ -391,7 +418,7 @@ def on_task_selected(task_type_combobox, task_type_entry):
     task_type_entry.grid() if selected_task == "Other" else task_type_entry.grid_remove()
 
 def save_task(task):
-    url = "https://localhost:7045/api/Data/saveTaskTimer"
+    url = "https://smapi.mezzex.com//api/Data/saveTaskTimer"
     data = {
         "UserId": USER_ID,
         "TaskId": task["task_id"],
@@ -418,7 +445,7 @@ def save_staff_in_time():
         "staffOutTime": None,
         "UserId": USER_ID
     }
-    url = "https://localhost:7045/api/Data/saveStaff"
+    url = "https://smapi.mezzex.com//api/Data/saveStaff"
     try:
         response = requests.post(url, json=data, verify=False)
         if response.status_code == 200:
@@ -450,7 +477,7 @@ def update_staff_out_time():
         "UserId": USER_ID,
         "Id": STAFF_ID
     }
-    url = "https://localhost:7045/api/Data/updateStaff"
+    url = "https://smapi.mezzex.com//api/Data/updateStaff"
     try:
         requests.post(url, json=data, verify=False)
     except requests.exceptions.RequestException:
@@ -497,7 +524,7 @@ def end_task(task_id):
 
 def fetch_task_time_id(task_id):
     # Example function to fetch TASKTIMEID from the server or other source
-    url = f"https://localhost:7045/api/Data/getTaskTimeId?taskId={task_id}"
+    url = f"https://smapi.mezzex.com//api/Data/getTaskTimeId?taskId={task_id}"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -512,7 +539,7 @@ def update_task_timer(task):
         print("Error: Invalid TASKTIMEID. TASKTIMEID should be a non-null integer.")
         return
 
-    url = "https://localhost:7045/api/Data/updateTaskTimer"
+    url = "https://smapi.mezzex.com//api/Data/updateTaskTimer"
     data = {
         "id": TASKTIMEID,
         "taskEndTime": task["end_time"]
@@ -551,7 +578,7 @@ def ensure_end_task_buttons():
 
 
 def fetch_task_timers():
-    url = "https://localhost:7045/api/Data/getTaskTimers"
+    url = "https://smapi.mezzex.com//api/Data/getTaskTimers"
     try:
         response = requests.get(url, verify=False)
         if response.status_code == 200:
@@ -666,7 +693,7 @@ def show_login_screen():
     login_frame = ctk.CTkFrame(root, fg_color="#2c3e50", corner_radius=15)
     login_frame.pack(expand=True)
 
-    login_title = ctk.CTkLabel(login_frame, text="Mezzex Eye Management System", font=("Helvetica", 24, "bold"), fg_color="#2c3e50", text_color="#ecf0f1", pady=20)
+    login_title = ctk.CTkLabel(login_frame, text="Mezzex Eye", font=("Helvetica", 24, "bold"), fg_color="#2c3e50", text_color="#ecf0f1", pady=20)
     login_title.grid(row=0, column=0, columnspan=3, pady=(20, 10), padx=10, sticky="n")
 
     username_label = ctk.CTkLabel(login_frame, text="Username:", font=("Helvetica", 14), fg_color="#2c3e50", text_color="#ecf0f1", padx=10, pady=5)
@@ -839,3 +866,7 @@ def on_close():
 root.protocol("WM_DELETE_WINDOW", on_close)
 show_login_screen()
 root.mainloop()
+
+if __name__ == "__main__":
+    create_startup_task()
+    main()

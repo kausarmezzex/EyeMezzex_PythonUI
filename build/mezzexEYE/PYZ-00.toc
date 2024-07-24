@@ -1,5 +1,5 @@
 ('C:\\Users\\Direct1\\Downloads\\mezzexEyeUI-main '
- '(2)\\build\\mezzexEye\\PYZ-00.pyz',
+ '(2)\\build\\MezzexEye\\PYZ-00.pyz',
  [('PIL',
    'C:\\Users\\Direct1\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PIL\\__init__.py',
    'PYMODULE'),
@@ -2609,6 +2609,9 @@
    'PYMODULE'),
   ('webbrowser',
    'C:\\Users\\Direct1\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\webbrowser.py',
+   'PYMODULE'),
+  ('win32con',
+   'C:\\Users\\Direct1\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\win32\\lib\\win32con.py',
    'PYMODULE'),
   ('xml',
    'C:\\Users\\Direct1\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\xml\\__init__.py',
