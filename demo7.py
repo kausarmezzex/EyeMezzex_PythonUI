@@ -99,8 +99,6 @@ if latitude and longitude:
     local_timezone = get_timezone(latitude, longitude)
 else:
     local_timezone = 'UTC'
-def get_current_time():
-    return datetime.now(pytz.timezone(local_timezone))
 
 def main():
     root = ctk.CTk()
@@ -140,7 +138,7 @@ def main():
                 blocked_keys_set.remove(key)
 
     def get_staff_in_time(user_id):
-        url = f"https://localhost:7045/api/Data/getStaffInTime?userId={user_id}"
+        url = f"https://smapi.mezzex.com/api/Data/getStaffInTime?userId={user_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -155,7 +153,7 @@ def main():
         return None, None
 
     def login(email, password):
-        url = "https://localhost:7045/api/AccountApi/login"
+        url = "https://smapi.mezzex.com/api/AccountApi/login"
         data = {"Email": email, "Password": password}
         try:
             response = requests.post(url, json=data, verify=False)
@@ -174,7 +172,7 @@ def main():
         return None, None
 
     def fetch_tasks():
-        url = "https://localhost:7045/api/Data/getTasks"
+        url = "https://smapi.mezzex.com/api/Data/getTasks"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -211,14 +209,8 @@ def main():
 
         comment = comment_entry.get().strip()
         task_id = TASK_ID_MAP.get(task_type, 1)
-        current_time = get_current_time()  # Get the current time
-        task = {
-            "task_type": task_type,
-            "comment": comment,
-            "start_time": current_time.strftime("%Y-%m-%dT%H:%M:%S"),  # Store as string for consistency
-            "start_datetime": current_time,
-            "task_id": task_id
-        }
+        # Ensure start time is in IST
+        task = {"task_type": task_type, "comment": comment, "start_time": datetime.now(), "task_id": task_id}
         TASKS.append(task)
         save_task(task)
         task_counter += 1
@@ -227,18 +219,15 @@ def main():
         comment_entry.delete(0, tk.END)
         update_task_list()
 
-        print(f"Task Start Time: {current_time}")  # Simulate sending the current time
-
-
     def staff_in():
         global STAFF_IN_TIME
-        current_time = get_current_time()
+      
         # Fallback to current time in IST if API fails
-        STAFF_IN_TIME = current_time
+        STAFF_IN_TIME = datetime.now(pytz.timezone(local_timezone))
         save_staff_in_time()
 
     def fetch_completed_tasks(user_id):
-        url = f"https://localhost:7045/api/Data/getUserCompletedTasks?userId={user_id}"
+        url = f"https://smapi.mezzex.com/api/Data/getUserCompletedTasks?userId={user_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -275,14 +264,14 @@ def main():
     def upload_data(image_url, system_info, activity_log):
         current_time = datetime.now(pytz.timezone(local_timezone)).isoformat()
         system_name = socket.gethostname()
-        url = "https://localhost:7045/api/Data/saveScreenCaptureData"
+        url = "https://smapi.mezzex.com/api/Data/saveScreenCaptureData"
         data = {
             "ImageUrl": image_url,
             "CreatedOn": current_time,
             "SystemName": system_name,
             "Username": USERNAME,
             "TaskTimerId": TASKTIMEID,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         try:
             requests.post(url, json=data, verify=False)
@@ -429,9 +418,9 @@ def main():
             "UserId": USER_ID,
             "TaskId": task["task_id"],
             "TaskComment": task["comment"],
-            "taskStartTime": task["start_datetime"].isoformat(),
+            "taskStartTime": task["start_time"].isoformat(),
             "taskEndTime": None,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         try:
             response = requests.post(url, json=data, verify=False)
@@ -443,7 +432,6 @@ def main():
         except requests.exceptions.RequestException:
             pass
 
-
     def save_staff_in_time():
         global STAFF_IN_TIME, STAFF_ID, SCREENSHOT_ENABLED
         STAFF_IN_TIME = datetime.now(pytz.timezone(local_timezone))
@@ -452,9 +440,9 @@ def main():
             "staffInTime": STAFF_IN_TIME.isoformat(),
             "staffOutTime": None,
             "UserId": USER_ID,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
-        url = "https://localhost:7045/api/Data/saveStaff"
+        url = "https://smapi.mezzex.com/api/Data/saveStaff"
         try:
             response = requests.post(url, json=data, verify=False)
             if response.status_code == 200:
@@ -486,9 +474,9 @@ def main():
             "staffOutTime": staff_out_time.isoformat(),
             "UserId": USER_ID,
             "Id": STAFF_ID,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
-        url = "https://localhost:7045/api/Data/updateStaff"
+        url = "https://smapi.mezzex.com/api/Data/updateStaff"
         try:
             requests.post(url, json=data, verify=False)
         except requests.exceptions.RequestException:
@@ -496,7 +484,7 @@ def main():
 
     def start_task_record(task_counter, task):
         task_id = task_counter
-        start_time = task["start_datetime"].strftime("%Y-%m-%dT%H:%M:%S")
+        start_time = task["start_time"].strftime("%Y-%m-%dT%H:%M:%S")
         RUNNING_TASKS[task_id] = {
             "id": task_id,
             "staff_name": USERNAME,
@@ -505,7 +493,6 @@ def main():
             "start_time": start_time,
             "working_time": "00:00:00"
         }
-
 
     def end_task(task_id):
         task = RUNNING_TASKS.pop(int(task_id), None)
@@ -517,12 +504,11 @@ def main():
             messagebox.showerror("Permission Denied", "You cannot end another user's task.")
             return
 
-        current_time = get_current_time()   # Get the current datetime object
-        task["end_time"] = current_time
-        task["end_datetime"] = current_time
-        start_datetime = datetime.strptime(task["start_time"], "%Y-%m-%dT%H:%M:%S")
-        working_time = current_time - start_datetime
-        task["working_time"] = str(working_time).split(".")[0]
+        # Ensure end time is in IST
+        task["end_time"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        start_time = datetime.fromisoformat(task["start_time"])
+        end_time = datetime.fromisoformat(task["end_time"])
+        task["working_time"] = str(end_time - start_time).split(".")[0]
         ENDED_TASKS.append(task)
 
         global TASKTIMEID
@@ -533,10 +519,9 @@ def main():
                 return
 
         update_task_timer(task)
-        print(f"Task End Time: {current_time}")  # Simulate sending the current time
 
     def fetch_task_time_id(task_id):
-        url = f"https://localhost:7045/api/Data/getTaskTimeId?taskId={task_id}"
+        url = f"https://smapi.mezzex.com/api/Data/getTaskTimeId?taskId={task_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -551,11 +536,11 @@ def main():
             print("Error: Invalid TASKTIMEID. TASKTIMEID should be a non-null integer.")
             return
 
-        url = "https://localhost:7045/api/Data/updateTaskTimer"
+        url = "https://smapi.mezzex.com/api/Data/updateTaskTimer"
         data = {
             "id": TASKTIMEID,
             "taskEndTime": task["end_time"],
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         try:
             response = requests.post(url, json=data, verify=False)
@@ -591,7 +576,7 @@ def main():
             running_task_treeview_reference.add_button(str(task_id))
 
     def fetch_task_timers(user_id):
-        url = f"https://localhost:7045/api/Data/getTaskTimers?userId={user_id}"
+        url = f"https://smapi.mezzex.com/api/Data/getTaskTimers?userId={user_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -760,8 +745,8 @@ def main():
 
     def staff_in():
         global STAFF_IN_TIME, staff_in_button_reference, staff_out_button_reference, staff_in_time_label_reference
-        current_time = get_current_time()
-        STAFF_IN_TIME = current_time
+        STAFF_IN_TIME = datetime.now(pytz.timezone(local_timezone))
+        
         save_staff_in_time()
         
         if STAFF_IN_TIME is not None:

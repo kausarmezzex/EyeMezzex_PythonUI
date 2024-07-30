@@ -99,8 +99,6 @@ if latitude and longitude:
     local_timezone = get_timezone(latitude, longitude)
 else:
     local_timezone = 'UTC'
-def get_current_time():
-    return datetime.now(pytz.timezone(local_timezone))
 
 def main():
     root = ctk.CTk()
@@ -140,7 +138,7 @@ def main():
                 blocked_keys_set.remove(key)
 
     def get_staff_in_time(user_id):
-        url = f"https://localhost:7045/api/Data/getStaffInTime?userId={user_id}"
+        url = f"https://localhost:7045/api/Data/getStaffInTime?userId={user_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -211,34 +209,22 @@ def main():
 
         comment = comment_entry.get().strip()
         task_id = TASK_ID_MAP.get(task_type, 1)
-        current_time = get_current_time()  # Get the current time
-        task = {
-            "task_type": task_type,
-            "comment": comment,
-            "start_time": current_time.strftime("%Y-%m-%dT%H:%M:%S"),  # Store as string for consistency
-            "start_datetime": current_time,
-            "task_id": task_id
-        }
+        # Ensure start time is in IST
+        task = {"task_type": task_type, "comment": comment, "start_time": datetime.now(), "task_id": task_id}
         TASKS.append(task)
         save_task(task)
         task_counter += 1
         start_task_record(task_counter, task)
         task_type_entry.delete(0, tk.END)
         comment_entry.delete(0, tk.END)
-        update_task_list()
-
-        print(f"Task Start Time: {current_time}")  # Simulate sending the current time
-
 
     def staff_in():
         global STAFF_IN_TIME
-        current_time = get_current_time()
-        # Fallback to current time in IST if API fails
-        STAFF_IN_TIME = current_time
+        STAFF_IN_TIME = datetime.now(pytz.timezone(local_timezone))
         save_staff_in_time()
 
     def fetch_completed_tasks(user_id):
-        url = f"https://localhost:7045/api/Data/getUserCompletedTasks?userId={user_id}"
+        url = f"https://localhost:7045/api/Data/getUserCompletedTasks?userId={user_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -282,7 +268,7 @@ def main():
             "SystemName": system_name,
             "Username": USERNAME,
             "TaskTimerId": TASKTIMEID,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         try:
             requests.post(url, json=data, verify=False)
@@ -373,6 +359,7 @@ def main():
         task_type_entry.grid_remove()
 
 
+
         ctk.CTkLabel(root, text="Comment:", fg_color="#2c3e50", text_color="#ecf0f1", font=("Helvetica", 12, "bold")).grid(row=2, column=3, padx=10, pady=10, sticky="w")
         comment_entry = ctk.CTkEntry(root, font=("Helvetica", 12), width=200, height=30)
         comment_entry.grid(row=2, column=4, padx=2, pady=10, sticky="ew")
@@ -424,14 +411,14 @@ def main():
         task_type_entry.grid() if selected_task == "Other" else task_type_entry.grid_remove()
     
     def save_task(task):
-        url = "https://smapi.mezzex.com/api/Data/saveTaskTimer"
+        url = "https://localhost:7045/api/Data/saveTaskTimer"
         data = {
             "UserId": USER_ID,
             "TaskId": task["task_id"],
             "TaskComment": task["comment"],
-            "taskStartTime": task["start_datetime"].isoformat(),
+            "taskStartTime": task["start_time"].isoformat(),
             "taskEndTime": None,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         try:
             response = requests.post(url, json=data, verify=False)
@@ -443,7 +430,6 @@ def main():
         except requests.exceptions.RequestException:
             pass
 
-
     def save_staff_in_time():
         global STAFF_IN_TIME, STAFF_ID, SCREENSHOT_ENABLED
         STAFF_IN_TIME = datetime.now(pytz.timezone(local_timezone))
@@ -452,7 +438,7 @@ def main():
             "staffInTime": STAFF_IN_TIME.isoformat(),
             "staffOutTime": None,
             "UserId": USER_ID,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         url = "https://localhost:7045/api/Data/saveStaff"
         try:
@@ -486,7 +472,7 @@ def main():
             "staffOutTime": staff_out_time.isoformat(),
             "UserId": USER_ID,
             "Id": STAFF_ID,
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         url = "https://localhost:7045/api/Data/updateStaff"
         try:
@@ -496,7 +482,7 @@ def main():
 
     def start_task_record(task_counter, task):
         task_id = task_counter
-        start_time = task["start_datetime"].strftime("%Y-%m-%dT%H:%M:%S")
+        start_time = task["start_time"].strftime("%Y-%m-%dT%H:%M:%S")
         RUNNING_TASKS[task_id] = {
             "id": task_id,
             "staff_name": USERNAME,
@@ -505,7 +491,6 @@ def main():
             "start_time": start_time,
             "working_time": "00:00:00"
         }
-
 
     def end_task(task_id):
         task = RUNNING_TASKS.pop(int(task_id), None)
@@ -517,12 +502,11 @@ def main():
             messagebox.showerror("Permission Denied", "You cannot end another user's task.")
             return
 
-        current_time = get_current_time()   # Get the current datetime object
-        task["end_time"] = current_time
-        task["end_datetime"] = current_time
-        start_datetime = datetime.strptime(task["start_time"], "%Y-%m-%dT%H:%M:%S")
-        working_time = current_time - start_datetime
-        task["working_time"] = str(working_time).split(".")[0]
+        # Ensure end time is in IST
+        task["end_time"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        start_time = datetime.fromisoformat(task["start_time"])
+        end_time = datetime.fromisoformat(task["end_time"])
+        task["working_time"] = str(end_time - start_time).split(".")[0]
         ENDED_TASKS.append(task)
 
         global TASKTIMEID
@@ -533,10 +517,9 @@ def main():
                 return
 
         update_task_timer(task)
-        print(f"Task End Time: {current_time}")  # Simulate sending the current time
 
     def fetch_task_time_id(task_id):
-        url = f"https://localhost:7045/api/Data/getTaskTimeId?taskId={task_id}"
+        url = f"https://localhost:7045/api/Data/getTaskTimeId?taskId={task_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -555,12 +538,12 @@ def main():
         data = {
             "id": TASKTIMEID,
             "taskEndTime": task["end_time"],
-            # "ClientTimeZone": local_timezone
+            "ClientTimeZone": local_timezone
         }
         try:
             response = requests.post(url, json=data, verify=False)
-            refresh_ui()
             if response.status_code != 200:
+                # update_task_list()
                 print(f"Failed to update task end time: {response.status_code}, response: {response.text}")
         except requests.exceptions.RequestException as e:
             print(f"Request exception: {e}")
@@ -578,20 +561,13 @@ def main():
                     "",
                     "end",
                     iid=str(task_id),
-                    values=(
-                        task["staff_name"],
-                        task["task_type"],
-                        task["comment"],
-                        start_time.strftime("%H:%M:%S"),
-                        task["working_time"],
-                        ""
-                    ),
+                    values=(task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"), task["working_time"], ""),
                     tags=("end_task",)
                 )
             running_task_treeview_reference.add_button(str(task_id))
 
     def fetch_task_timers(user_id):
-        url = f"https://localhost:7045/api/Data/getTaskTimers?userId={user_id}"
+        url = f"https://localhost:7045/api/Data/getTaskTimers?userId={user_id}&clientTimeZone={local_timezone}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -694,15 +670,14 @@ def main():
             for task_id, task in RUNNING_TASKS.items():
                 task_id_str = str(task_id)
                 start_time = datetime.fromisoformat(task["start_time"])
-                # Convert start_time to the same timezone as current_time_ist
-                start_time = pytz.timezone(local_timezone).localize(start_time)
-                current_time_ist = datetime.now(pytz.timezone(local_timezone))
+                current_time_ist = datetime.now()
                 working_time = str(current_time_ist - start_time).split(".")[0]
+                formatted_working_time = format_working_time(working_time)
+                task_data = (task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"), formatted_working_time, "")
 
-                task_data = (task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"), working_time, "")
                 is_current_user_task = task["staff_name"] == USERNAME
                 tags = ("end_task", "current_user") if is_current_user_task else ("end_task",)
-
+                    
                 if task_id_str in existing_ids:
                     if running_task_treeview_reference.item(task_id_str, 'values') != task_data:
                         running_task_treeview_reference.item(task_id_str, values=task_data)
@@ -727,11 +702,6 @@ def main():
             for task in ENDED_TASKS:
                 start_time = datetime.fromisoformat(task["start_time"])
                 end_time = datetime.fromisoformat(task["end_time"])
-                
-                # Convert start_time and end_time to the same timezone as local_timezone
-                start_time = pytz.timezone(local_timezone).localize(start_time)
-                end_time = pytz.timezone(local_timezone).localize(end_time)
-                
                 working_time = format_working_time(task["working_time"])
                 task_data = (task["staff_name"], task["task_type"], task["comment"], start_time.strftime("%H:%M:%S"), end_time.strftime("%H:%M:%S"), working_time)
 
@@ -747,11 +717,9 @@ def main():
 
     def update_task_list():
         if not UPDATE_TASK_LIST_FLAG:
-            return
-        
+            return       
         fetch_and_update_tasks()
         update_ui()
-        # root.after(60000, update_task_list)
 
     def on_treeview_click(event):
         item = running_task_treeview_reference.identify('item', event.x, event.y)
@@ -760,8 +728,8 @@ def main():
 
     def staff_in():
         global STAFF_IN_TIME, staff_in_button_reference, staff_out_button_reference, staff_in_time_label_reference
-        current_time = get_current_time()
-        STAFF_IN_TIME = current_time
+        STAFF_IN_TIME = datetime.now(pytz.timezone(local_timezone))
+        refresh_ui()
         save_staff_in_time()
         
         if STAFF_IN_TIME is not None:
@@ -857,7 +825,7 @@ def main():
                     "staff_name": task.get("userName", "Unknown"),
                     "task_type": task.get("taskName", "Unknown"),
                     "comment": task.get("taskComment", ""),
-                    "start_time": datetime.fromisoformat(task.get("taskStartTime")).strftime("%Y-%m-%dT%H:%M:%S"),
+                    "start_time": datetime.fromisoformat(task['taskStartTime']).strftime("%Y-%m-%dT%H:%M:%S"),
                     "working_time": "00:00:00"
                 }
 
@@ -866,9 +834,9 @@ def main():
                 "staff_name": task.get("userName", "Unknown"),
                 "task_type": task.get("taskName", "Unknown"),
                 "comment": task.get("taskComment", ""),
-                "start_time": datetime.fromisoformat(task.get("taskStartTime")).strftime("%Y-%m-%dT%H:%M:%S"),
-                "end_time": datetime.fromisoformat(task.get("taskEndTime")).strftime("%Y-%m-%dT%H:%M:%S"),
-                "working_time": str(datetime.fromisoformat(task.get("taskEndTime")) - datetime.fromisoformat(task.get("taskStartTime")))
+                "start_time": datetime.fromisoformat(task["taskStartTime"]).strftime("%Y-%m-%dT%H:%M:%S"),
+                "end_time": datetime.fromisoformat(task["taskEndTime"]).strftime("%Y-%m-%dT%H:%M:%S"),
+                "working_time": str(datetime.fromisoformat(task["taskEndTime"]) - datetime.fromisoformat(task["taskStartTime"]))
             }
             ENDED_TASKS.append(ended_task)
 
@@ -876,84 +844,81 @@ def main():
         print("Refreshed UI")
 
     class CustomTreeview(ttk.Treeview):
-                def __init__(self, master=None, **kwargs):
-                    super().__init__(master, **kwargs)
-                    self.style = ttk.Style()
-                    self.style.configure("Treeview", font=("Helvetica", 12), rowheight=26)
-                    self.style.configure("Treeview.Heading", font=("Helvetica", 14, "bold"), padding=(0, 0, 0, 10))
-                    self.style.layout("Treeview.Row", [("Treeitem.row", {"sticky": "nswe"})])
-                    self.style.map("Treeview.Row", background=[("selected", "#2c3e50")])
-                    self.buttons = {}
+        def __init__(self, master=None, **kwargs):
+            super().__init__(master, **kwargs)
+            self.style = ttk.Style()
+            self.style.configure("Treeview", font=("Helvetica", 12), rowheight=32)
+            self.style.configure("Treeview.Heading", font=("Helvetica", 14, "bold"), padding=(0, 0, 0, 12))
+            self.style.layout("Treeview.Row", [("Treeitem.row", {"sticky": "nswe"})])
+            self.style.map("Treeview.Row", background=[("selected", "#2c3e50")])
+            self.buttons = {}
 
-                    self.bind("<ButtonRelease-1>", self.on_click)
-                    self.bind("<Motion>", self.on_scroll)
+            self.bind("<ButtonRelease-1>", self.on_click)
+            self.bind("<Motion>", self.on_scroll)
 
-                def insert(self, parent, index, iid=None, **kw):
-                    item = super().insert(parent, index, iid=iid, **kw)
-                    # Only add the button if necessary and if the 'tags' specify 'end_task'
-                    if 'tags' in kw and 'end_task' in kw['tags']:
-                        self.add_button(item)
-                    self.add_separator()
-                    return item
+        def insert(self, parent, index, iid=None, **kw):
+            item = super().insert(parent, index, iid=iid, **kw)
+            if 'tags' in kw and 'end_task' in kw['tags']:
+                self.add_button(item)
+            self.add_separator()
+            return item
 
-                def add_button(self, item):
-                    if item not in self.buttons:
-                        btn = ttk.Button(self, text="End Task", command=lambda: self.end_task_callback(item))
-                        self.buttons[item] = btn
-                        self.place_button(item)
+        def add_button(self, item):
+            if item not in self.buttons:
+                btn = ttk.Button(self, text="End Task", command=lambda: self.end_task_callback(item))
+                self.buttons[item] = btn
+                self.place_button(item)
 
-                def place_button(self, item, retry_count=0):
-                    if item in self.buttons:
-                        btn = self.buttons[item]
-                        bbox = self.bbox(item, column="#6")
-                        if bbox:
-                            # Check if the button is already placed correctly
-                            current_x, current_y = btn.winfo_x(), btn.winfo_y()
-                            target_x, target_y = bbox[0] + 2, bbox[1] + 2
-                            if (current_x, current_y) != (target_x, target_y):
-                                btn.place(x=target_x, y=target_y)
-                        else:
-                            # Retry placing the button if the bounding box is not available yet
-                            if retry_count < 5:
-                                self.after(100, lambda: self.place_button(item, retry_count + 1))
+        def place_button(self, item, retry_count=0):
+            if item in self.buttons:
+                btn = self.buttons[item]
+                bbox = self.bbox(item, column="#6")
+                if bbox:
+                    current_x, current_y = btn.winfo_x(), btn.winfo_y()
+                    target_x, target_y = bbox[0] + 2, bbox[1] + 2
+                    if (current_x, current_y) != (target_x, target_y):
+                        btn.place(x=target_x, y=target_y)
+                else:
+                    if retry_count < 5:
+                        self.after(100, lambda: self.place_button(item, retry_count + 1))
 
-                def end_task_callback(self, item):
-                    task_id = item
-                    task = RUNNING_TASKS.get(int(task_id))
-                    if task and task["staff_name"] == USERNAME:
-                        end_task(task_id)
-                        self.delete_button(item)
-                    else:
-                        messagebox.showerror("Permission Denied", "You cannot end another user's task.")
+        def end_task_callback(self, item):
+            task_id = item
+            task = RUNNING_TASKS.get(int(task_id))
+            if task and task["staff_name"] == USERNAME:
+                end_task(task_id)
+                self.delete_button(item)
+            else:
+                messagebox.showerror("Permission Denied", "You cannot end another user's task.")
 
-                def delete_button(self, item):
-                    if item in self.buttons:
-                        self.buttons[item].destroy()
-                        del self.buttons[item]
+        def delete_button(self, item):
+            if item in self.buttons:
+                self.buttons[item].destroy()
+                del self.buttons[item]
 
-                def delete(self, *items):
-                    for item in items:
-                        self.delete_button(item)
-                    super().delete(*items)
+        def delete(self, *items):
+            for item in items:
+                self.delete_button(item)
+            super().delete(*items)
 
-                def resize(self):
-                    for item in self.get_children():
-                        if item in self.buttons:
-                            self.place_button(item)
+        def resize(self):
+            for item in self.get_children():
+                if item in self.buttons:
+                    self.place_button(item)
 
-                def on_click(self, event):
-                    for item in self.get_children():
-                        self.place_button(item)
+        def on_click(self, event):
+            for item in self.get_children():
+                self.place_button(item)
 
-                def on_scroll(self, event):
-                    for item in self.get_children():
-                        self.place_button(item)
+        def on_scroll(self, event):
+            for item in self.get_children():
+                self.place_button(item)
 
-                def add_separator(self):
-                    # Add a separator as a new row
-                    separator_id = super().insert("", "end", values=("",), tags=("separator",))
-                    self.tag_configure("separator", background="#e0e0e0")
-                    return separator_id
+        def add_separator(self):
+            separator_id = super().insert("", "end", values=("",), tags=("separator",))
+            self.tag_configure("separator", background="#e0e0e0")
+            return separator_id
+
     root.title("Mezzex Eye")
     root.geometry("1280x850")
     root.configure(fg_color="#2c3e50")

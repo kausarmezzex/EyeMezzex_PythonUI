@@ -13,19 +13,18 @@ import threading
 import cloudinary
 import cloudinary.uploader
 import pytz
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import socket
 import urllib3
 import keyboard
 import logging
 from win32com.client import Dispatch
 from filelock import FileLock, Timeout
-import tzlocal
+from timezonefinder import TimezoneFinder
+import geopy
+from geopy.geocoders import Nominatim
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Timezones
-IST = pytz.timezone('Asia/Kolkata')
-UK = pytz.timezone('Europe/London')
 
 # Global variables
 TOKEN = None
@@ -45,6 +44,32 @@ blocked_keys_set = set()
 staff_in_button_reference = None
 staff_out_button_reference = None
 task_counter = 0
+
+def get_lat_long():
+    try:
+        response = requests.get('https://ipinfo.io/json')
+        data = response.json()
+        loc = data['loc'].split(',')
+        return float(loc[0]), float(loc[1])
+    except Exception as e:
+        print(f"Error getting location: {e}")
+        return None, None
+
+# Function to get the timezone from latitude and longitude
+def get_timezone(lat, long):
+    tf = TimezoneFinder()
+    return tf.timezone_at(lng=long, lat=lat)
+
+# Get the latitude and longitude
+latitude, longitude = get_lat_long()
+
+# Get the local timezone based on latitude and longitude
+if latitude and longitude:
+    local_timezone = get_timezone(latitude, longitude)
+else:
+    local_timezone = 'UTC'
+def get_current_time():
+    return datetime.now(pytz.timezone(local_timezone))
 
 # Functions definitions
 def is_another_instance_running(lock_file_path="app.lock"):
@@ -91,9 +116,6 @@ def main():
     if not lock:
         sys.exit(0)
     icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mezzex_logo.ico")
-
-    def get_current_time_for_timezone(tz):
-        return datetime.now(tz)
     
     # Cloudinary configuration
     cloudinary.config(
@@ -120,7 +142,7 @@ def main():
                 blocked_keys_set.remove(key)
 
     def get_staff_in_time(user_id):
-        url = f"https://smapi.mezzex.com/api/Data/getStaffInTime?userId={user_id}"
+        url = f"https://localhost:7045/api/Data/getStaffInTime?userId={user_id}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -135,7 +157,7 @@ def main():
         return None, None
 
     def login(email, password):
-        url = "https://smapi.mezzex.com/api/AccountApi/login"
+        url = "https://localhost:7045/api/AccountApi/login"
         data = {"Email": email, "Password": password}
         try:
             response = requests.post(url, json=data, verify=False)
@@ -154,7 +176,7 @@ def main():
         return None, None
 
     def fetch_tasks():
-        url = "https://smapi.mezzex.com/api/Data/getTasks"
+        url = "https://localhost:7045/api/Data/getTasks"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -192,7 +214,7 @@ def main():
         comment = comment_entry.get().strip()
         task_id = TASK_ID_MAP.get(task_type, 1)
         # Save start time in UTC
-        task = {"task_type": task_type, "comment": comment, "start_time": datetime.now(timezone.utc), "task_id": task_id}
+        task = {"task_type": task_type, "comment": comment, "start_time": get_current_time(), "task_id": task_id}
         TASKS.append(task)
         save_task(task)
         task_counter += 1
@@ -203,13 +225,12 @@ def main():
 
     def staff_in():
         global STAFF_IN_TIME
-            # Fallback to current time in IST if API fails
-        kolkata_tz = pytz.timezone('Asia/Kolkata')
-        STAFF_IN_TIME = datetime.now(kolkata_tz)
+        
+        STAFF_IN_TIME =get_current_time()
         save_staff_in_time()
 
     def fetch_completed_tasks(user_id):
-        url = f"https://smapi.mezzex.com/api/Data/getUserCompletedTasks?userId={user_id}"
+        url = f"https://localhost:7045/api/Data/getUserCompletedTasks?userId={user_id}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -244,10 +265,10 @@ def main():
         return "Activity Log"
 
     def upload_data(image_url, system_info, activity_log):
-        kolkata_tz = pytz.timezone('Asia/Kolkata')
-        current_time = datetime.now(kolkata_tz).isoformat()
+        kolkata_tz = get_current_time()
+        current_time = kolkata_tz.isoformat()
         system_name = socket.gethostname()
-        url = "https://smapi.mezzex.com/api/Data/saveScreenCaptureData"
+        url = "https://localhost:7045/api/Data/saveScreenCaptureData"
         data = {
             "ImageUrl": image_url,
             "CreatedOn": current_time,
@@ -389,7 +410,7 @@ def main():
         task_type_entry.grid() if selected_task == "Other" else task_type_entry.grid_remove()
 
     def save_task(task):
-        url = "https://smapi.mezzex.com/api/Data/saveTaskTimer"
+        url = "https://localhost:7045/api/Data/saveTaskTimer"
         data = {
             "UserId": USER_ID,
             "TaskId": task["task_id"],
@@ -410,14 +431,14 @@ def main():
 
     def save_staff_in_time():
         global STAFF_IN_TIME, STAFF_ID, SCREENSHOT_ENABLED
-        STAFF_IN_TIME = convert_to_ist(datetime.now())
+        STAFF_IN_TIME = get_current_time()
         SCREENSHOT_ENABLED = True
         data = {
             "staffInTime": STAFF_IN_TIME.isoformat(),
             "staffOutTime": None,
             "UserId": USER_ID
         }
-        url = "https://smapi.mezzex.com/api/Data/saveStaff"
+        url = "https://localhost:7045/api/Data/saveStaff"
         try:
             response = requests.post(url, json=data, verify=False)
             if response.status_code == 200:
@@ -444,14 +465,14 @@ def main():
             return
 
         SCREENSHOT_ENABLED = False
-        staff_out_time = datetime.now(pytz.timezone('Asia/Kolkata'))
+        staff_out_time = get_current_time()
         data = {
             "staffInTime": STAFF_IN_TIME.isoformat(),
             "staffOutTime": staff_out_time.isoformat(),
             "UserId": USER_ID,
             "Id": STAFF_ID
         }
-        url = "https://smapi.mezzex.com/api/Data/updateStaff"
+        url = "https://localhost:7045/api/Data/updateStaff"
         try:
             requests.post(url, json=data, verify=False)
         except requests.exceptions.RequestException:
@@ -480,9 +501,10 @@ def main():
             return
 
         # Ensure end time is in IST
-        task["end_time"] = convert_to_ist(datetime.now()).strftime("%Y-%m-%dT%H:%M:%S")
-        start_time = convert_to_ist(datetime.fromisoformat(task["start_time"]))
-        end_time = convert_to_ist(datetime.fromisoformat(task["end_time"]))
+        current_time = get_current_time()
+        task["end_time"] = current_time.strftime("%Y-%m-%dT%H:%M:%S")
+        start_time = datetime.fromisoformat(task["start_time"])
+        end_time = datetime.fromisoformat(task["end_time"])
         task["working_time"] = str(end_time - start_time).split(".")[0]
         ENDED_TASKS.append(task)
 
@@ -496,7 +518,7 @@ def main():
         update_task_timer(task)
 
     def fetch_task_time_id(task_id):
-        url = f"https://smapi.mezzex.com/api/Data/getTaskTimeId?taskId={task_id}"
+        url = f"https://localhost:7045/api/Data/getTaskTimeId?taskId={task_id}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -511,7 +533,7 @@ def main():
             print("Error: Invalid TASKTIMEID. TASKTIMEID should be a non-null integer.")
             return
 
-        url = "https://smapi.mezzex.com/api/Data/updateTaskTimer"
+        url = "https://localhost:7045/api/Data/updateTaskTimer"
         data = {
             "id": TASKTIMEID,
             "taskEndTime": task["end_time"]
@@ -549,7 +571,7 @@ def main():
             running_task_treeview_reference.add_button(str(task_id))
 
     def fetch_task_timers(user_id):
-        url = f"https://smapi.mezzex.com/api/Data/getTaskTimers?userId={user_id}"
+        url = f"https://localhost:7045/api/Data/getTaskTimers?userId={user_id}"
         try:
             response = requests.get(url, verify=False)
             if response.status_code == 200:
@@ -619,21 +641,6 @@ def main():
     def fetch_and_update_tasks():
         global RUNNING_TASKS, ENDED_TASKS
 
-        # Get the system's current time zone
-        local_tz = tzlocal.get_localzone()
-
-        # Determine if the system is in India time zone
-        is_system_india_tz = local_tz.key == 'Asia/Kolkata'
-
-        # Only calculate the time difference if the system is not in India time zone
-        if not is_system_india_tz:
-            is_currently_bst = is_bst()
-            uk_offset = 1 if is_currently_bst else 0  # BST is GMT+1, otherwise GMT
-            india_offset = 5.5  # IST is GMT+5:30
-            time_difference = india_offset - uk_offset
-        else:
-            time_difference = 0
-
         task_timers = fetch_task_timers(USER_ID)
         running_tasks = {}
         for task in task_timers:
@@ -641,14 +648,12 @@ def main():
             if task_id:
                 # Original start time
                 original_start_time = datetime.fromisoformat(task.get("taskStartTime"))
-                # Adjusted start time with time difference
-                adjusted_start_time = original_start_time + timedelta(hours=time_difference)
 
                 running_tasks[task_id] = {
                     "staff_name": task.get("userName", "Unknown"),
                     "task_type": task.get("taskName", "Unknown"),
                     "comment": task.get("taskComment", ""),
-                    "start_time": adjusted_start_time.strftime('%Y-%m-%dT%H:%M:%S'),
+                    "start_time": original_start_time.strftime('%Y-%m-%dT%H:%M:%S'),
                     "working_time": '00:00:00'
                 }
         RUNNING_TASKS = running_tasks
@@ -661,35 +666,19 @@ def main():
              # Original start time
                 original_start_time = datetime.fromisoformat(task.get("taskStartTime"))
                 original_end_time = datetime.fromisoformat(task.get("taskEndTime"))
-                    # Adjusted start time with time difference
-                adjusted_start_time = original_start_time + timedelta(hours=time_difference)
-                adjusted_end_time = original_end_time + timedelta(hours=time_difference)
 
                 ended_task = {
                     "staff_name": task.get("userName", "Unknown"),
                     "task_type": task.get("taskName", "Unknown"),
                     "comment": task.get("taskComment", ""),
-                    "start_time": adjusted_start_time.strftime('%Y-%m-%dT%H:%M:%S'),
-                    "end_time": adjusted_end_time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "working_time": str(adjusted_end_time - adjusted_start_time)
+                    "start_time": original_start_time.strftime('%Y-%m-%dT%H:%M:%S'),
+                    "end_time": original_end_time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "working_time": str(original_end_time - original_start_time)
                 }
             ended_tasks.append(ended_task)
         ENDED_TASKS = ended_tasks
 
     def update_ui():
-        local_tz = tzlocal.get_localzone()
-
-        # Determine if the system is in India time zone
-        is_system_india_tz = local_tz.key == 'Asia/Kolkata'
-
-        # Only calculate the time difference if the system is not in India time zone
-        if not is_system_india_tz:
-            is_currently_bst = is_bst()
-            uk_offset = 1 if is_currently_bst else 0  # BST is GMT+1, otherwise GMT
-            india_offset = 5.5  # IST is GMT+5:30
-            time_difference = india_offset - uk_offset
-        else:
-            time_difference = 0
 
         # Check if running_task_treeview_reference still exists
         if running_task_treeview_reference and running_task_treeview_reference.winfo_exists():
@@ -708,15 +697,11 @@ def main():
             # Update or add new items, prioritizing current user's tasks
             for task_id, task in RUNNING_TASKS.items():
                 task_id_str = str(task_id)
-                kolkata_tz = pytz.timezone('Asia/Kolkata')
-                # start_time = datetime.fromisoformat(task["start_time"])
-                # Original start time
                 original_start_time = datetime.fromisoformat(task.get("start_time"))
-                # Adjusted start time with time difference
-                adjusted_start_time = original_start_time + timedelta(hours=time_difference)
                 # Convert start_time to a timezone-aware datetime
-                start_time =  adjusted_start_time.strftime('%Y-%m-%dT%H:%M:%S'),
-                working_time = str(datetime.now() - adjusted_start_time).split(".")[0]
+                start_time =  original_start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                current_time = datetime.fromisoformat(get_current_time())
+                working_time = str(current_time.strftime('%Y-%m-%dT%H:%M:%S')- original_start_time).split(".")[0]
                 task_data = (task["staff_name"], task["task_type"], task["comment"], start_time, working_time, "")
 
                 # Check if the task belongs to the current user
@@ -751,12 +736,9 @@ def main():
 
             for task in ENDED_TASKS:
                 original_start_time = datetime.fromisoformat(task.get("start_time"))
-                # Adjusted start time with time difference
-                adjusted_start_time = original_start_time + timedelta(hours=time_difference)
-                start_time =  adjusted_start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                start_time =  original_start_time.strftime('%Y-%m-%dT%H:%M:%S')
                 original_end_time = datetime.fromisoformat(task.get("end_time"))
-                adjusted_end_time = original_end_time + timedelta(hours=time_difference)
-                end_time = adjusted_end_time.strftime("%Y-%m-%dT%H:%M:%S")
+                end_time = original_end_time.strftime("%Y-%m-%dT%H:%M:%S")
                 working_time = format_working_time(task["working_time"])
                 task_data = (task["staff_name"], task["task_type"], task["comment"], start_time, end_time, working_time)
 
